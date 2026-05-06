@@ -1130,7 +1130,6 @@ from PIL import Image
 import tensorflow as tf
 import time
 import os
-import requests
 import gdown 
   # <--- নতুন যোগ
 
@@ -1244,46 +1243,60 @@ def load_cifar_model():
     import gdown
     import tensorflow as tf
 
+    # ❗ corrupted / half डाउनलोड file remove
     if os.path.exists(MODEL_FILE):
         file_size = os.path.getsize(MODEL_FILE) / (1024 * 1024)
-        if file_size < 70:
+        if file_size < 70:   # expected ~80MB
             os.remove(MODEL_FILE)
 
+    # ✅ download from Google Drive (stable)
     if not os.path.exists(MODEL_FILE):
         with st.spinner("Downloading model (80 MB) from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
             gdown.download(url, MODEL_FILE, quiet=False)
 
-    # custom_objects এ 'Functional' কে Model দিয়ে ম্যাপ করুন
+    # ✅ FIX: Functional model loading issue
     custom_objects = {'Functional': tf.keras.models.Model}
+
     model = tf.keras.models.load_model(
         MODEL_FILE,
         custom_objects=custom_objects,
         compile=False,
         safe_mode=False
     )
-    return model
 
-model = load_cifar_model()
+    return model
 
 # ============================================================
 #  TTA PREDICTION
 # ============================================================
-def tta_predict(img_arr: np.ndarray):
+def tta_predict(img_arr: np.ndarray, model):
     base = img_arr.astype(np.uint8)
     pil = Image.fromarray(base)
-    augs = [base, np.fliplr(base), np.array(pil.rotate(5)), np.array(pil.rotate(-5))]
+
+    augs = [
+        base,
+        np.fliplr(base),
+        np.array(pil.rotate(5)),
+        np.array(pil.rotate(-5))
+    ]
+
     preds = []
+
     for aug in augs:
-        x = aug.astype(np.float32)
+        x = aug.astype(np.float32) / 255.0
         x = np.expand_dims(x, axis=0)
-        logits = model.predict(x, verbose=0)[0]
+
+        logits = model.predict(x, verbose=0)
+        logits = logits.squeeze()
+
         probs = tf.nn.softmax(logits).numpy()
         preds.append(probs)
+
     return np.array(preds)
 
-def pct(v): return f"{v*100:.1f}%"
-
+def pct(v: float) -> str:
+    return f"{v * 100:.1f}%"
 # ============================================================
 #  SIDEBAR
 # ============================================================
