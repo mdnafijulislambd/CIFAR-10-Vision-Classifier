@@ -1,7 +1,13 @@
-streamlit
-tensorflow==2.15.0
+# streamlit
+# tensorflow==2.15.0
+# numpy
+# pandas
+# pillow
+# plotly
+# requests
+
+
+streamlit==1.57.0
+tensorflow-cpu==2.11.0
 numpy
-pandas
 pillow
-plotly
-requests
