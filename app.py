@@ -1131,7 +1131,8 @@ import tensorflow as tf
 import time
 import os
 import requests
-import gdown   # <--- নতুন যোগ
+import gdown 
+  # <--- নতুন যোগ
 
 # ============================================================
 #  CONFIG
@@ -1236,24 +1237,33 @@ st.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
-# ============================================================
-#  LOAD MODEL (using gdown for reliable Google Drive download)
-# ============================================================
+
 @st.cache_resource
 def load_cifar_model():
+    import os
+    import gdown
+    import tensorflow as tf
+
+    if os.path.exists(MODEL_FILE):
+        file_size = os.path.getsize(MODEL_FILE) / (1024 * 1024)
+        if file_size < 70:
+            os.remove(MODEL_FILE)
+
     if not os.path.exists(MODEL_FILE):
         with st.spinner("Downloading model (80 MB) from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
             gdown.download(url, MODEL_FILE, quiet=False)
-    
+
+    # custom_objects এ 'Functional' কে Model দিয়ে ম্যাপ করুন
+    custom_objects = {'Functional': tf.keras.models.Model}
     model = tf.keras.models.load_model(
         MODEL_FILE,
+        custom_objects=custom_objects,
         compile=False,
         safe_mode=False
     )
     return model
 
-# Load model globally
 model = load_cifar_model()
 
 # ============================================================
