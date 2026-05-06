@@ -1748,29 +1748,6 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -1780,10 +1757,7 @@ from PIL import Image
 import tensorflow as tf
 import time
 import os
-import gdown 
-  # <--- নতুন যোগ
-
-
+import gdown
 
 # ============================================================
 #  CONFIG
@@ -1888,27 +1862,41 @@ st.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
+# ============================================================
+#  PATCH FOR OLD KERAS INPUTLAYER (Convert batch_shape -> batch_input_shape)
+# ============================================================
+class PatchedInputLayer(tf.keras.layers.InputLayer):
+    @classmethod
+    def from_config(cls, config):
+        # Convert old 'batch_shape' to new 'batch_input_shape'
+        if 'batch_shape' in config:
+            config['batch_input_shape'] = config.pop('batch_shape')
+        # Remove 'optional' key which is not used in new version
+        config.pop('optional', None)
+        return super().from_config(config)
 
+# ============================================================
+#  LOAD MODEL (with custom objects)
+# ============================================================
 @st.cache_resource
 def load_cifar_model():
-    import os
-    import gdown
-    import tensorflow as tf
-
-    # ❗ corrupted / half डाउनलोड file remove
+    # If file exists but is too small, remove it
     if os.path.exists(MODEL_FILE):
         file_size = os.path.getsize(MODEL_FILE) / (1024 * 1024)
         if file_size < 70:   # expected ~80MB
             os.remove(MODEL_FILE)
 
-    # ✅ download from Google Drive (stable)
+    # Download if missing
     if not os.path.exists(MODEL_FILE):
         with st.spinner("Downloading model (80 MB) from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
             gdown.download(url, MODEL_FILE, quiet=False)
 
-    # ✅ FIX: Functional model loading issue
-    custom_objects = {'Functional': tf.keras.models.Model}
+    # Custom objects for both Functional and InputLayer
+    custom_objects = {
+        'Functional': tf.keras.models.Model,
+        'InputLayer': PatchedInputLayer,
+    }
 
     model = tf.keras.models.load_model(
         MODEL_FILE,
@@ -1916,8 +1904,12 @@ def load_cifar_model():
         compile=False,
         safe_mode=False
     )
-
     return model
+
+# ============================================================
+#  GLOBAL MODEL LOAD
+# ============================================================
+model = load_cifar_model()
 
 # ============================================================
 #  TTA PREDICTION
@@ -1949,13 +1941,6 @@ def tta_predict(img_arr: np.ndarray, model):
 
 def pct(v: float) -> str:
     return f"{v * 100:.1f}%"
-
-
-# ============================================================
-#  ✅ MODEL LOAD — functions শেষ, UI শুরুর আগে
-# ============================================================
-model = load_cifar_model()
-
 
 # ============================================================
 #  SIDEBAR
@@ -2044,7 +2029,6 @@ with st.expander("📊 Training History (Numeric Table)", expanded=False):
 
 st.divider()
 
-
 # ============================================================
 # UPLOAD & PREDICTION (CLEAN VERSION)
 # ============================================================
@@ -2057,7 +2041,7 @@ with left:
 
     file = st.file_uploader(
         "Choose a JPG or PNG file",
-        type=["jpg", "jpeg", "png"],
+        type=["jpg","jpeg","png"],
         label_visibility="collapsed"
     )
 
@@ -2094,7 +2078,7 @@ with right:
         with st.spinner("Running TTA inference (4 folds)…"):
             start_time = time.time()
 
-            preds = tta_predict(img_arr, model)   # MUST pass model
+            preds = tta_predict(img_arr, model)   # global model
 
             inference_time = (time.time() - start_time) * 1000
 
@@ -2268,3 +2252,10 @@ if current_image is not None:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align:center;padding:16px;border-top:1px solid rgba(255,255,255,0.06);">
+    <div style="font-size:11px;color:#374151;letter-spacing:1px;">Built with <span style="color:#6366f1;">Streamlit</span> · TensorFlow / Keras · <strong>Md. Nafijul Islam</strong></div>
+</div>
+""", unsafe_allow_html=True)
