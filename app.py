@@ -1734,25 +1734,10 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from PIL import Image
 import tensorflow as tf
 import time
@@ -1797,7 +1782,7 @@ TRAINING_HISTORY = {
 GITHUB_URL = "https://github.com/mdnafijulislambd/CIFAR-10-Vision-Classifier"
 
 # ============================================================
-#  PAGE CONFIG & CSS
+#  PAGE CONFIG & CSS (same as original)
 # ============================================================
 st.set_page_config(page_title="CIFAR-10 Vision Classifier", page_icon="🧠", layout="wide")
 
@@ -1853,7 +1838,6 @@ hr { border-color: var(--border) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# GitHub icon
 st.markdown(f"""
 <a href="{GITHUB_URL}" target="_blank" class="github-corner">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -1863,15 +1847,21 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================
-#  PATCH FOR OLD KERAS INPUTLAYER (Convert batch_shape -> batch_input_shape)
+#  PATCH FOR OLD INPUTLAYER (convert batch_shape → batch_input_shape)
 # ============================================================
 class PatchedInputLayer(tf.keras.layers.InputLayer):
+    def __init__(self, batch_shape=None, optional=None, **kwargs):
+        # Convert batch_shape to batch_input_shape (new API)
+        if batch_shape is not None:
+            kwargs['batch_input_shape'] = batch_shape
+        # 'optional' is ignored
+        super().__init__(**kwargs)
+    
     @classmethod
     def from_config(cls, config):
-        # Convert old 'batch_shape' to new 'batch_input_shape'
+        # Modify config before deserialization
         if 'batch_shape' in config:
             config['batch_input_shape'] = config.pop('batch_shape')
-        # Remove 'optional' key which is not used in new version
         config.pop('optional', None)
         return super().from_config(config)
 
@@ -1880,19 +1870,18 @@ class PatchedInputLayer(tf.keras.layers.InputLayer):
 # ============================================================
 @st.cache_resource
 def load_cifar_model():
-    # If file exists but is too small, remove it
+    # Remove corrupt or too small file
     if os.path.exists(MODEL_FILE):
-        file_size = os.path.getsize(MODEL_FILE) / (1024 * 1024)
-        if file_size < 70:   # expected ~80MB
+        size_mb = os.path.getsize(MODEL_FILE) / (1024 * 1024)
+        if size_mb < 70:
             os.remove(MODEL_FILE)
 
-    # Download if missing
+    # Download if not present
     if not os.path.exists(MODEL_FILE):
         with st.spinner("Downloading model (80 MB) from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
             gdown.download(url, MODEL_FILE, quiet=False)
 
-    # Custom objects for both Functional and InputLayer
     custom_objects = {
         'Functional': tf.keras.models.Model,
         'InputLayer': PatchedInputLayer,
@@ -1926,14 +1915,10 @@ def tta_predict(img_arr: np.ndarray, model):
     ]
 
     preds = []
-
     for aug in augs:
         x = aug.astype(np.float32) / 255.0
         x = np.expand_dims(x, axis=0)
-
-        logits = model.predict(x, verbose=0)
-        logits = logits.squeeze()
-
+        logits = model.predict(x, verbose=0).squeeze()
         probs = tf.nn.softmax(logits).numpy()
         preds.append(probs)
 
@@ -1997,7 +1982,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Training history graphs
+# Training history
 with st.expander("📈 Training History (Graphs)", expanded=False):
     df_history = pd.DataFrame(TRAINING_HISTORY)
     col_acc, col_loss = st.columns(2)
@@ -2018,7 +2003,6 @@ with st.expander("📈 Training History (Graphs)", expanded=False):
         fig_loss.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
         st.plotly_chart(fig_loss, use_container_width=True)
 
-# Numeric table
 with st.expander("📊 Training History (Numeric Table)", expanded=False):
     df_display = pd.DataFrame(TRAINING_HISTORY)
     df_display["train_acc"] = (df_display["train_acc"] * 100).map("{:.2f}%".format)
@@ -2030,227 +2014,93 @@ with st.expander("📊 Training History (Numeric Table)", expanded=False):
 st.divider()
 
 # ============================================================
-# UPLOAD & PREDICTION (CLEAN VERSION)
+# UPLOAD & PREDICTION
 # ============================================================
-
 left, right = st.columns([1, 1], gap="large")
 
-# ---------------- LEFT SIDE ----------------
 with left:
     st.markdown("<div class='sec-title'>Upload Image</div>", unsafe_allow_html=True)
-
-    file = st.file_uploader(
-        "Choose a JPG or PNG file",
-        type=["jpg","jpeg","png"],
-        label_visibility="collapsed"
-    )
-
+    file = st.file_uploader("Choose a JPG or PNG file", type=["jpg","jpeg","png"], label_visibility="collapsed")
     current_image = None
-
     if file:
         image = Image.open(file).convert("RGB")
-
         st.image(image, use_container_width=True, caption="Original image")
-
         raw = Image.open(file)
-
-        st.markdown(
-            f"<div style='font-size:11px;color:#6b7280;margin-top:6px;'>"
-            f"Original: {raw.width}×{raw.height}px · {file.type}</div>",
-            unsafe_allow_html=True
-        )
-
+        st.markdown(f"<div style='font-size:11px;color:#6b7280;margin-top:6px;'>Original: {raw.width}×{raw.height}px · {file.type}</div>", unsafe_allow_html=True)
         current_image = image
 
-# ---------------- RIGHT SIDE ----------------
 with right:
     st.markdown("<div class='sec-title'>Prediction Result</div>", unsafe_allow_html=True)
-
     if current_image is None:
         st.info("👈 Upload an image to see classification")
-
     else:
-        # ================= IMAGE PREPROCESS =================
         img_resized = current_image.resize((32, 32))
         img_arr = np.array(img_resized, dtype=np.uint8)
-
-        # ================= TTA INFERENCE =================
         with st.spinner("Running TTA inference (4 folds)…"):
-            start_time = time.time()
-
-            preds = tta_predict(img_arr, model)   # global model
-
-            inference_time = (time.time() - start_time) * 1000
-
-        # ================= SAFE AGGREGATION =================
-        preds = np.array(preds)
-        avg = preds.mean(axis=0)
-
-        top_idx = int(np.argmax(avg))
-        label = CLASSES[top_idx]
-        confidence = float(avg[top_idx])
-        color = CLASS_COLORS[label]
-
-        # ================= MAIN RESULT UI =================
+            start = time.time()
+            preds = tta_predict(img_arr, model)
+            elapsed = (time.time() - start) * 1000
+        avg = np.mean(preds, axis=0)
+        idx = int(np.argmax(avg))
+        label = CLASSES[idx]
+        conf = float(avg[idx])
         st.markdown(f"""
         <div class="pred-badge">
             <div class="pred-emoji">{EMOJIS[label]}</div>
-            <div>
-                <div class="pred-text">{label.upper()}</div>
-                <div class="pred-conf">{confidence*100:.2f}% confidence</div>
-            </div>
+            <div><div class="pred-text">{label.upper()}</div><div class="pred-conf">{conf*100:.2f}% confidence</div></div>
         </div>
         """, unsafe_allow_html=True)
-
-        st.caption(f"⏱️ Inference time: {inference_time:.0f} ms (4 TTA folds)")
-
-        # ================= TOP 5 =================
+        st.caption(f"⏱️ Inference: {elapsed:.0f} ms (4 TTA folds)")
         st.markdown("<div class='sec-title'>Top 5 Predictions</div>", unsafe_allow_html=True)
-
         top5 = np.argsort(avg)[::-1][:5]
-
         for rank, i in enumerate(top5):
-            cls = CLASSES[i]
-            val = float(avg[i])
-            col = CLASS_COLORS[cls]
-
+            c = CLASSES[i]; v = float(avg[i]); col = CLASS_COLORS[c]
             st.markdown(f"""
             <div class="prog-row">
-                <div class="prog-label">
-                    <span>
-                        {'🥇' if rank == 0 else '  '}
-                        {EMOJIS[cls]} {cls.capitalize()}
-                    </span>
-                    <span>{pct(val)}</span>
-                </div>
-
-                <div class="prog-track">
-                    <div class="prog-fill"
-                         style="width:{val*100:.2f}%;
-                         background:linear-gradient(90deg,{col}cc,{col}66);">
-                    </div>
-                </div>
+                <div class="prog-label"><span>{'🥇' if rank==0 else '  '} {EMOJIS[c]} {c.capitalize()}</span><span>{pct(v)}</span></div>
+                <div class="prog-track"><div class="prog-fill" style="width:{v*100:.2f}%; background:linear-gradient(90deg,{col}cc,{col}66);"></div></div>
             </div>
             """, unsafe_allow_html=True)
 
-# ============================================================
-# EXTRA CLEAN SECTION (only when image exists)
-# ============================================================
 if current_image is not None:
-
     st.divider()
-
-    col_a, col_b = st.columns([1, 1], gap="large")
-
-    # ---------------- ALL PROBS ----------------
+    col_a, col_b = st.columns([1,1], gap="large")
     with col_a:
         st.markdown("<div class='sec-title'>All Class Probabilities</div>", unsafe_allow_html=True)
-
         sorted_idx = np.argsort(avg)[::-1]
-
         for i in sorted_idx:
-            cls = CLASSES[i]
-            val = float(avg[i])
-            col = CLASS_COLORS[cls]
-
+            c = CLASSES[i]; v = float(avg[i]); col_c = CLASS_COLORS[c]
             st.markdown(f"""
-            <div class="prog-row">
-                <div class="prog-label">
-                    <span>{EMOJIS[cls]} {cls.capitalize()}</span>
-                    <span>{pct(val)}</span>
-                </div>
-
-                <div class="prog-track">
-                    <div class="prog-fill"
-                         style="width:{val*100:.2f}%;
-                         background:linear-gradient(90deg,{col}cc,{col}44);">
-                    </div>
-                </div>
-            </div>
+            <div class="prog-row"><div class="prog-label"><span>{EMOJIS[c]} {c.capitalize()}</span><span>{pct(v)}</span></div>
+            <div class="prog-track"><div class="prog-fill" style="width:{v*100:.2f}%; background:linear-gradient(90deg,{col_c}cc,{col_c}44);"></div></div></div>
             """, unsafe_allow_html=True)
-
-    # ---------------- TTA BREAKDOWN ----------------
     with col_b:
-        st.markdown("<div class='sec-title'>TTA Breakdown</div>", unsafe_allow_html=True)
-
-        aug_names = ["Original", "Flip", "Rotate +5°", "Rotate -5°"]
-        aug_icons = ["🖼️", "🔄", "↗️", "↘️"]
-
-        c1, c2 = st.columns(2)
-
+        st.markdown("<div class='sec-title'>TTA Augmentation Breakdown</div>", unsafe_allow_html=True)
+        aug_names = ["Original","Horizontal Flip","Rotate +5°","Rotate −5°"]
+        aug_icons = ["🖼️","🔄","↗️","↘️"]
+        c1,c2 = st.columns(2)
         for k in range(4):
-            p = preds[k]
-            pred_idx = int(np.argmax(p))
-            pred_cls = CLASSES[pred_idx]
-            pred_conf = float(np.max(p))
-            col = CLASS_COLORS[pred_cls]
-
-            target = c1 if k % 2 == 0 else c2
-
+            p = preds[k]; pi = int(np.argmax(p)); pcls = CLASSES[pi]; pv = float(np.max(p)); pcol = CLASS_COLORS[pcls]
+            target = c1 if k%2==0 else c2
             with target:
                 st.markdown(f"""
-                <div class="tta-card">
-                    <div class="tta-aug-name">{aug_icons[k]} {aug_names[k]}</div>
-
-                    <div style="font-size:24px;">{EMOJIS[pred_cls]}</div>
-
-                    <div class="tta-pred-label">{pred_cls.capitalize()}</div>
-
-                    <div class="tta-pred-conf">{pred_conf*100:.1f}%</div>
-
-                    <div class="tta-bar-wrap">
-                        <div class="tta-bar-fill"
-                             style="width:{pred_conf*100:.1f}%;
-                             background:linear-gradient(90deg,{col},{col}88);">
-                        </div>
-                    </div>
-                </div>
+                <div class="tta-card"><div class="tta-aug-name">{aug_icons[k]} {aug_names[k]}</div>
+                <div style="font-size:24px;">{EMOJIS[pcls]}</div>
+                <div class="tta-pred-label">{pcls.capitalize()}</div>
+                <div class="tta-pred-conf">{pv*100:.1f}%</div>
+                <div class="tta-bar-wrap"><div class="tta-bar-fill" style="width:{pv*100:.1f}%;background:linear-gradient(90deg,{pcol},{pcol}88);"></div></div></div>
                 """, unsafe_allow_html=True)
-
                 st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-
-    # ---------------- AGREEMENT ----------------
     st.divider()
-
     tta_labels = [CLASSES[int(np.argmax(preds[i]))] for i in range(4)]
-    agreement = tta_labels.count(label) / 4
-
+    agreement = tta_labels.count(label)/4
     st.markdown(f"""
-    <div class="glass-card">
-        <div class="sec-title">TTA Agreement</div>
-
-        <div style="display:flex;align-items:center;gap:16px;">
-
-            <div style="font-size:32px;">
-                {'✅' if agreement == 1 else '⚠️'}
-            </div>
-
-            <div>
-                <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;">
-                    {int(agreement*4)}/4 agree on
-                    <span style="color:#22d3ee;">{label.capitalize()}</span>
-                </div>
-
-                <div style="font-size:12px;color:#6b7280;">
-                    {'High confidence prediction' if agreement == 1 else 'Some disagreement in TTA folds'}
-                </div>
-            </div>
-
-            <div style="margin-left:auto;">
-                <div style="font-family:'DM Mono',monospace;font-size:28px;color:#22d3ee;">
-                    {int(agreement*100)}%
-                </div>
-            </div>
-
-        </div>
-
-        <div class="prog-track" style="margin-top:12px;height:8px;">
-            <div class="prog-fill"
-                 style="width:{agreement*100:.0f}%;
-                 background:{'linear-gradient(90deg,#10b981,#22d3ee)' if agreement==1 else 'linear-gradient(90deg,#f59e0b,#f87171)'};">
-            </div>
-        </div>
-    </div>
+    <div class="glass-card"><div class="sec-title">TTA Agreement</div>
+    <div style="display:flex;align-items:center;gap:16px;"><div style="font-size:32px;">{'✅' if agreement==1 else '⚠️'}</div>
+    <div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;">{int(agreement*4)}/4 augmentations agree on <span style="color:#22d3ee;">{label.capitalize()}</span></div>
+    <div style="font-size:12px;color:#6b7280;">{'High confidence — all TTA folds are consistent.' if agreement==1 else 'Some folds disagree — treat confidence with caution.'}</div></div>
+    <div style="margin-left:auto;"><div style="font-family:'DM Mono',monospace;font-size:28px;color:#22d3ee;font-weight:500;">{int(agreement*100)}%</div></div></div>
+    <div class="prog-track" style="margin-top:12px;height:8px;"><div class="prog-fill" style="width:{agreement*100:.0f}%;background:{'linear-gradient(90deg,#10b981,#22d3ee)' if agreement==1 else 'linear-gradient(90deg,#f59e0b,#f87171)'};"></div></div></div>
     """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
