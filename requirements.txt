@@ -15,6 +15,16 @@
 # plotly
 # requests
 
+# streamlit
+# tensorflow==2.15.0
+# keras==2.15.0
+# numpy
+# pandas
+# pillow
+# plotly
+# requests
+
+
 streamlit
 tensorflow==2.15.0
 keras==2.15.0
@@ -23,3 +33,4 @@ pandas
 pillow
 plotly
 requests
+gdown
