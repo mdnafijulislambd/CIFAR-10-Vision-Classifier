@@ -568,7 +568,7 @@ with left:
     file = st.file_uploader("Choose a JPG or PNG file", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
     if file:
         image = Image.open(file).convert("RGB")
-        st.image(image, use_container_width=True, caption="Original image (resized to 32×32 for inference)")
+        st.image(image, width="stretch", caption="Original image (resized to 32×32 for inference)")
         raw = Image.open(file)
         st.markdown(f"<div style='font-size:11px;color:#6b7280;margin-top:6px;'>Original: {raw.width}×{raw.height}px · {file.type}</div>", unsafe_allow_html=True)
         current_image = image
