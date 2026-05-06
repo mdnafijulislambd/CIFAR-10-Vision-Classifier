@@ -1,6 +1,5 @@
 venv/
 *.pyc
 __pycache__/
-*.keras
 .env
 .DS_Store
