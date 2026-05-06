@@ -1121,8 +1121,6 @@
 
 
 
-
-
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -1133,12 +1131,12 @@ import tensorflow as tf
 import time
 import os
 import requests
+import gdown   # <--- নতুন যোগ
 
 # ============================================================
 #  CONFIG
 # ============================================================
 MODEL_FILE = "final_cifar10_model_exp6.keras"
-# Your Google Drive file ID (extracted from the share link)
 GOOGLE_DRIVE_FILE_ID = "1eQ71ay40dkemH2wE0eIz_t6pyQ8YlyI3"
 
 CLASSES = [
@@ -1173,7 +1171,7 @@ TRAINING_HISTORY = {
 GITHUB_URL = "https://github.com/mdnafijulislambd/CIFAR-10-Vision-Classifier"
 
 # ============================================================
-#  PAGE CONFIG & CSS (same as original dark theme)
+#  PAGE CONFIG & CSS
 # ============================================================
 st.set_page_config(page_title="CIFAR-10 Vision Classifier", page_icon="🧠", layout="wide")
 
@@ -1239,21 +1237,15 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================
-#  LOAD MODEL (Auto-download from Google Drive) - FIXED
+#  LOAD MODEL (using gdown for reliable Google Drive download)
 # ============================================================
 @st.cache_resource
 def load_cifar_model():
     if not os.path.exists(MODEL_FILE):
-        with st.spinner("Downloading model (80 MB)..."):
-            url = f"https://drive.google.com/uc?export=download&id={GOOGLE_DRIVE_FILE_ID}"
-            response = requests.get(url, stream=True)
-
-            with open(MODEL_FILE, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-
-    # 🔥 SAFE LOAD (important fix)
+        with st.spinner("Downloading model (80 MB) from Google Drive..."):
+            url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
+            gdown.download(url, MODEL_FILE, quiet=False)
+    
     model = tf.keras.models.load_model(
         MODEL_FILE,
         compile=False,
@@ -1261,11 +1253,11 @@ def load_cifar_model():
     )
     return model
 
-# ----- IMPORTANT: Assign the loaded model to global variable -----
+# Load model globally
 model = load_cifar_model()
 
 # ============================================================
-#  TTA PREDICTION (no division by 255)
+#  TTA PREDICTION
 # ============================================================
 def tta_predict(img_arr: np.ndarray):
     base = img_arr.astype(np.uint8)
@@ -1273,7 +1265,7 @@ def tta_predict(img_arr: np.ndarray):
     augs = [base, np.fliplr(base), np.array(pil.rotate(5)), np.array(pil.rotate(-5))]
     preds = []
     for aug in augs:
-        x = aug.astype(np.float32)   # keep 0-255 range
+        x = aug.astype(np.float32)
         x = np.expand_dims(x, axis=0)
         logits = model.predict(x, verbose=0)[0]
         probs = tf.nn.softmax(logits).numpy()
