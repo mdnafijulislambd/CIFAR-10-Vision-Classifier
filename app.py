@@ -819,23 +819,55 @@ st.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
-# ============================================================
-#  LOAD MODEL (Auto-download from Google Drive)
-# ============================================================
+# # ============================================================
+# #  LOAD MODEL (Auto-download from Google Drive)
+# # ============================================================
+# @st.cache_resource
+# def load_cifar_model():
+#     if not os.path.exists(MODEL_FILE):
+#         with st.spinner("Downloading model (approx 80 MB) from Google Drive... This may take a minute."):
+#             # Construct direct download URL from file ID
+#             url = f"https://drive.google.com/uc?export=download&id={GOOGLE_DRIVE_FILE_ID}"
+#             # Use requests to download
+#             response = requests.get(url, stream=True)
+#             with open(MODEL_FILE, "wb") as f:
+#                 for chunk in response.iter_content(chunk_size=8192):
+#                     f.write(chunk)
+#     return tf.keras.models.load_model(MODEL_FILE, compile=False)
+
+# model = load_cifar_model()
+
+
+
+
 @st.cache_resource
 def load_cifar_model():
+    import tensorflow as tf
+
     if not os.path.exists(MODEL_FILE):
-        with st.spinner("Downloading model (approx 80 MB) from Google Drive... This may take a minute."):
-            # Construct direct download URL from file ID
+        with st.spinner("Downloading model (80 MB)..."):
             url = f"https://drive.google.com/uc?export=download&id={GOOGLE_DRIVE_FILE_ID}"
-            # Use requests to download
             response = requests.get(url, stream=True)
+
             with open(MODEL_FILE, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-    return tf.keras.models.load_model(MODEL_FILE, compile=False)
+                    if chunk:
+                        f.write(chunk)
 
-model = load_cifar_model()
+    # 🔥 SAFE LOAD (important fix)
+    model = tf.keras.models.load_model(
+        MODEL_FILE,
+        compile=False,
+        safe_mode=False
+    )
+
+    return model
+
+
+
+
+
+
 
 # ============================================================
 #  TTA PREDICTION (no division by 255)

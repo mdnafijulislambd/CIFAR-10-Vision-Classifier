@@ -7,8 +7,17 @@
 # requests
 
 
-streamlit==1.57.0
+# streamlit==1.57.0
+# tensorflow==2.15.0
+# numpy
+# pandas
+# pillow
+# plotly
+# requests
+
+streamlit
 tensorflow==2.15.0
+keras==2.15.0
 numpy
 pandas
 pillow
