@@ -1772,9 +1772,6 @@
 
 
 
-
-
-
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -1784,7 +1781,7 @@ from PIL import Image
 import tensorflow as tf
 import time
 import os
-import gdown 
+import gdown
 
 # ============================================================
 #  CONFIG
@@ -1889,27 +1886,34 @@ st.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
+# ============================================================
+#  PATCH FOR OLD KERAS INPUTLAYER (no extra import required)
+# ============================================================
+class PatchedInputLayer(tf.keras.layers.InputLayer):
+    def __init__(self, batch_shape=None, optional=None, **kwargs):
+        # 'batch_shape' and 'optional' are ignored; pass only remaining kwargs
+        super().__init__(**kwargs)
 
+# ============================================================
+#  LOAD MODEL (with custom objects)
+# ============================================================
 @st.cache_resource
 def load_cifar_model():
-    import os
-    import gdown
-    import tensorflow as tf
-
-    # ❗ corrupted / half डाउनलोड file remove
+    # if exists and too small -> remove
     if os.path.exists(MODEL_FILE):
         file_size = os.path.getsize(MODEL_FILE) / (1024 * 1024)
-        if file_size < 70:   # expected ~80MB
+        if file_size < 70:
             os.remove(MODEL_FILE)
 
-    # ✅ download from Google Drive (stable)
     if not os.path.exists(MODEL_FILE):
         with st.spinner("Downloading model (80 MB) from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
             gdown.download(url, MODEL_FILE, quiet=False)
 
-    # ✅ FIX: Functional model loading issue
-    custom_objects = {'Functional': tf.keras.models.Model}
+    custom_objects = {
+        'Functional': tf.keras.models.Model,
+        'InputLayer': PatchedInputLayer,   # patched version
+    }
 
     model = tf.keras.models.load_model(
         MODEL_FILE,
@@ -1917,11 +1921,12 @@ def load_cifar_model():
         compile=False,
         safe_mode=False
     )
-
     return model
 
+model = load_cifar_model()
+
 # ============================================================
-#  🚀 IMPORTANT: GLOBAL MODEL LOAD (ONLY THIS LINE ADDED)
+#  GLOBAL MODEL LOAD
 # ============================================================
 model = load_cifar_model()
 
