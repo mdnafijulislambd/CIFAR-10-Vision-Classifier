@@ -353,7 +353,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-@st.cache_resource
+# =========================
+# DOWNLOAD MODEL (SAFE VERSION)
+# =========================
 def download_model():
     if not os.path.exists(MODEL_PATH):
         with st.spinner("Downloading model..."):
@@ -367,20 +369,18 @@ def download_model():
             except Exception as e:
                 st.error(f"Download failed: {e}")
 
+# 👉 ALWAYS RUN FIRST
 download_model()
 
-
-
-# ============================================================
-#  LOAD MODEL
-# ============================================================
-@st.cache_resource(show_spinner=False)
+# =========================
+# LOAD MODEL (AFTER DOWNLOAD)
+# =========================
+@st.cache_resource
 def load_model():
-    try:
-        return tf.keras.models.load_model(MODEL_PATH, compile=False)
-    except Exception as e:
-        st.error(f"❌ Model file not found: `{MODEL_PATH}`\n\nMake sure the model file is in the same directory as this app.")
+    if not os.path.exists(MODEL_PATH):
+        st.error("Model file missing even after download!")
         return None
+    return tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 model = load_model()
 
