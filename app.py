@@ -6,7 +6,8 @@ from plotly.subplots import make_subplots
 from PIL import Image
 import tensorflow as tf
 import time
-
+import gdown
+import os
 # ============================================================
 #  CONFIG
 # ============================================================
@@ -350,6 +351,25 @@ st.markdown(f"""
     </svg>
 </a>
 """, unsafe_allow_html=True)
+
+
+@st.cache_resource
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        with st.spinner("Downloading model..."):
+            try:
+                gdown.download(
+                    "https://drive.google.com/uc?id=1eQ71ay40dkemH2wE0eIz_t6pyQ8YlyI3",
+                    MODEL_PATH,
+                    quiet=False
+                )
+                st.success("Model downloaded successfully!")
+            except Exception as e:
+                st.error(f"Download failed: {e}")
+
+download_model()
+
+
 
 # ============================================================
 #  LOAD MODEL
